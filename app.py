@@ -215,7 +215,7 @@ with col2:
         greeting_map = {
             '金牌经纪人': "你好，我是 Veritas 的经纪人。有商业合作还是想了解选手的近况？",
             '战队教练': "马上就要训练赛了，有什么问题快点问，别耽误我们复盘。",
-            'Veritas (选手本人)': "我是 Veritas。上路对线有不懂的可以问我，虽然你可能学不会。"
+            '选手本人': "我是 Veritas。上路对线有不懂的可以问我，虽然你可能学不会。"
         }
         st.session_state.messages.append({"role": "assistant", "content": greeting_map[selected_agent]})
 
