@@ -11,7 +11,7 @@ st.set_page_config(
     page_title="Veritas | 顶尖上单",
     page_icon="⚔️",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # 注入自定义CSS（英雄联盟、海克斯科技风格）
@@ -81,6 +81,19 @@ def local_css():
         background-color: rgba(30, 35, 40, 0.8) !important;
         border: 1px solid #463714;
         border-radius: 8px;
+    }
+
+    /* 修复文字颜色看不清的问题：强制聊天内容为亮色 */
+    div[data-testid="stChatMessageContent"] {
+        color: #F0E6D2 !important;
+    }
+
+    .stChatMessage p {
+        color: #F0E6D2 !important;
+    }
+
+    /* 输入框文字颜色 */
+    .stChatInput textarea {
         color: #F0E6D2 !important;
     }
 
@@ -89,17 +102,58 @@ def local_css():
         color: #0AC8B9; /* 海克斯蓝 */
         font-weight: bold;
     }
+
+    /* 侧边栏样式调整 */
+    section[data-testid="stSidebar"] {
+        background-color: #091428;
+        border-right: 1px solid #463714;
+    }
+    section[data-testid="stSidebar"] .stMarkdown p,
+    section[data-testid="stSidebar"] label {
+        color: #C8AA6E !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
 local_css()
 
-# 页面头部信息
+# ================= 侧边栏与Agent配置 =================
+with st.sidebar:
+    st.header("⚙️ 终端控制台")
+    api_key = st.text_input(label='请输入你的千问 API Key:', type='password', value=os.environ.get("QWEN_API_KEY", ""))
+
+    agent_options = ['金牌经纪人', '战队教练', 'Veritas (选手本人)']
+    selected_agent = st.selectbox(label='请选择你要通讯的对象', options=agent_options)
+
+# Agent 的系统提示词配置
+SYSTEM_PROMPTS = {
+    '金牌经纪人': """你现在是英雄联盟顶尖上单选手 Veritas（俞成儒）的金牌经纪人。
+用第三人称回答问题，语气专业、圆滑、充满商业头脑，并且对你的选手极度自信。
+如果有人问起战队的八卦或者负面新闻，你要得体地进行公关回应。""",
+
+    '战队教练': """你现在是 Veritas 所在战队的主教练。
+你非常严肃、严厉，极度看重纪律、战术执行力和团队配合。
+你经常用战术术语（如：兵线运营、视野控制、TP绕后、团战拉扯）来分析问题。
+虽然你承认 Veritas 操作顶尖，但你总是提醒他不要太浪，要以团队胜利为重。""",
+
+    'Veritas (选手本人)': """你现在就是英雄联盟顶尖上单选手 Veritas（真实姓名：俞成儒）。
+你极其自信，甚至有点狂傲，因为你拥有匹配这份狂傲的实力（S赛冠军、FMVP）。
+你用第一人称“我”回答问题，喜欢谈论极限单杀、对线压制以及你的招牌英雄（卡密尔、武器大师等）。
+面对质疑，你会用赛场上的成绩狠狠打脸回去。"""
+}
+
+# 监听Agent切换，如果切换了，就清空聊天记录重新初始化
+if "current_agent" not in st.session_state:
+    st.session_state.current_agent = selected_agent
+elif st.session_state.current_agent != selected_agent:
+    st.session_state.current_agent = selected_agent
+    st.session_state.messages = [] # 清空记录
+
+# ================= 页面主体信息 =================
 st.markdown("<h1 style='text-align: center;'>VERITAS (俞成儒)</h1>", unsafe_allow_html=True)
 st.markdown("<h3 style='text-align: center; color: #0AC8B9 !important;'>Legendary Top Laner | Former ID: Trew</h3>", unsafe_allow_html=True)
 st.markdown("---")
 
-# 两栏布局：个人履历与AI经纪人
 col1, col2 = st.columns([1, 1])
 
 with col1:
@@ -118,7 +172,6 @@ with col1:
     st.markdown("<br>", unsafe_allow_html=True)
     st.header("⚔️ 招牌英雄 | Signature Champions")
 
-    # 英雄图片使用官方原画的网络链接
     heroes = [
         {"name": "青钢影 卡密尔", "img": "https://game.gtimg.cn/images/lol/act/img/skin/big164000.jpg"},
         {"name": "武器大师 贾克斯", "img": "https://game.gtimg.cn/images/lol/act/img/skin/big24000.jpg"},
@@ -141,68 +194,66 @@ with col1:
         st.markdown(f'<div class="hero-card"><img src="{heroes[2]["img"]}"><div class="hero-name">{heroes[2]["name"]}</div></div>', unsafe_allow_html=True)
 
 with col2:
-    st.header("💼 专属经纪人 | AI Agent")
-    st.markdown("我是 Veritas(俞成儒) 的金牌经纪人。如果你想了解关于他的任何事，无论是赛场表现、转会传闻还是生活趣事，都可以问我。")
+    st.header(f"💬 实时通讯 | 与 {selected_agent} 对话")
 
-    # ---------------- AI 聊天模块 ----------------
+    if not api_key:
+        st.error('通讯链路未建立：请在左侧控制台提供你的千问 API Key 建立连接。')
+        st.stop()
+
+    # 初始化千问客户端
     client = OpenAI(
-        api_key=os.environ.get("GEMINI_API_KEY", ""),
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+        api_key=api_key,
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
     )
 
-    if "messages" not in st.session_state:
+    if "messages" not in st.session_state or not st.session_state.messages:
+        # 初始化记录，写入System Prompt
         st.session_state.messages = [
-            {"role": "system", "content": """你现在是英雄联盟顶尖上单选手 Veritas（真实姓名：俞成儒，曾用名：Trew）的金牌经纪人。
-            你的任务是以经纪人的身份（第三人称，称呼他为“Veritas”、“成儒”或“我的选手”）回答粉丝和访客的问题。
-
-            关于 Veritas 的背景设定：
-            - 位置：上单 (Top Laner)
-            - 招牌英雄：卡密尔、武器大师、奎桑提、俄洛伊（狼母）、薇恩。
-            - 荣誉：2023年英雄联盟全球总决赛（Worlds）冠军兼FMVP；多次LPL常规赛MVP；连续三个赛季韩服王者1500+胜点。
-            - 风格：对线凶悍、单带无敌、打团抗压能力极强，被誉为“上单位的教科书”。
-            - 性格：作为经纪人，你可以说他平时训练非常刻苦，私下里有点高冷但对粉丝很好。
-
-            回答要求：
-            1. 始终保持经纪人的人设，语气专业、自信、且对你的选手充满自豪感。
-            2. 回答要简练，带有电竞圈的风格和术语（如：BP、单杀、抗压、TP、拉扯等）。
-            3. 如果被问到负面消息或绯闻，要得体地公关回应。
-            """}
+            {"role": "system", "content": SYSTEM_PROMPTS[selected_agent]}
         ]
+        # 添加一句Agent的开场白
+        greeting_map = {
+            '金牌经纪人': "你好，我是 Veritas 的经纪人。有商业合作还是想了解选手的近况？",
+            '战队教练': "马上就要训练赛了，有什么问题快点问，别耽误我们复盘。",
+            'Veritas (选手本人)': "我是 Veritas。上路对线有不懂的可以问我，虽然你可能学不会。"
+        }
+        st.session_state.messages.append({"role": "assistant", "content": greeting_map[selected_agent]})
 
-    # 显示聊天历史（跳过system prompt）
+    # 遍历聊天列表 (跳过system prompt)
     for message in st.session_state.messages:
         if message["role"] != "system":
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-    # 处理用户输入
-    if prompt := st.chat_input("向经纪人提问..."):
-        # 显示用户输入
-        with st.chat_message("user"):
-            st.markdown(prompt)
+    # 聊天输入
+    user_input = st.chat_input(placeholder='请输入...')
+    if user_input:
+        # 显示用户问题
+        with st.chat_message('user'):
+            st.markdown(user_input)
 
-        # 将用户输入加入记忆
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        # 将用户问题加入历史
+        st.session_state.messages.append({'role': 'user', 'content': user_input})
 
-        # 调用Gemini模型
-        with st.chat_message("assistant"):
-            try:
-                response = client.chat.completions.create(
-                    model="gemini-3-flash-preview", # 修改模型名称，根据用户提供
-                    messages=st.session_state.messages,
-                    stream=True
-                )
+        # 调用大模型并流式展示结果
+        with st.chat_message('assistant'):
+            with st.spinner('通讯中...'):
+                try:
+                    stream = client.chat.completions.create(
+                        model="qwen3-max",
+                        messages=st.session_state.messages,
+                        stream=True
+                    )
 
-                # 流式输出
-                placeholder = st.empty()
-                full_response = ""
-                for chunk in response:
-                    if chunk.choices[0].delta.content is not None:
-                        full_response += chunk.choices[0].delta.content
-                        placeholder.markdown(full_response + "▌")
-                placeholder.markdown(full_response)
+                    placeholder = st.empty()
+                    full_response = ""
+                    for chunk in stream:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            full_response += chunk.choices[0].delta.content
+                            placeholder.markdown(full_response + "▌")
+                    placeholder.markdown(full_response)
 
-                # 保存助手回复
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
-            except Exception as e:
-                st.error(f"哎呀，经纪人的通讯设备似乎出了点问题：{str(e)}")
+                    # 保存回答
+                    st.session_state.messages.append({'role': 'assistant', 'content': full_response})
+                except Exception as e:
+                    st.error(f"信号干扰，通讯中断：{str(e)}")
