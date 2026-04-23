@@ -146,7 +146,7 @@ with col2:
 
     # ---------------- AI 聊天模块 ----------------
     client = OpenAI(
-        api_key=os.environ.get("GEMINI_API_KEY", "AIzaSyA--KJkUEohxfiG0s-QCAbu2HzhOOXqldk"),
+        api_key=os.environ.get("GEMINI_API_KEY", ""),
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
     )
 
